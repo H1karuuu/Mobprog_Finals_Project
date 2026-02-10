@@ -1,19 +1,38 @@
 import 'package:flutter/material.dart';
+import 'screens/profile_screen.dart';
 
 void main() {
-  runApp(const MainApp());
+  runApp(const MyApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+
+  bool isDark = true;
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Personal Profile App',
+
+      theme: ThemeData(
+        brightness: isDark ? Brightness.dark : Brightness.light,
+        primarySwatch: Colors.red,
+        scaffoldBackgroundColor:
+            isDark ? const Color(0xFF121212) : Colors.white,
+      ),
+
+      home: ProfileScreen(
+        onToggleTheme: () {
+          setState(() => isDark = !isDark);
+        },
       ),
     );
   }
