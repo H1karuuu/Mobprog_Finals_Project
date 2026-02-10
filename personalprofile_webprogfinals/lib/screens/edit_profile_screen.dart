@@ -40,34 +40,146 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Edit Profile")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text("Edit Profile"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Profile Icon
+              Center(
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Colors.redAccent,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              // Name Field
               TextFormField(
                 controller: nameCtrl,
                 validator: (v) => v!.isEmpty ? "Required" : null,
-                decoration: const InputDecoration(labelText: "Name"),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  labelText: "Name",
+                  labelStyle: const TextStyle(color: Colors.redAccent),
+                  prefixIcon: const Icon(Icons.person_outline, color: Colors.redAccent),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.withOpacity(0.1),
+                ),
               ),
+              const SizedBox(height: 16),
+
+              // Bio Field
               TextFormField(
                 controller: bioCtrl,
-                decoration: const InputDecoration(labelText: "Bio"),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  labelText: "Bio",
+                  labelStyle: const TextStyle(color: Colors.redAccent),
+                  prefixIcon: const Icon(Icons.info_outline, color: Colors.redAccent),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.withOpacity(0.1),
+                ),
               ),
+              const SizedBox(height: 16),
+
+              // Email Field
               TextFormField(
                 controller: emailCtrl,
                 validator: (v) => v!.contains("@") ? null : "Invalid email",
-                decoration: const InputDecoration(labelText: "Email"),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  labelText: "Email",
+                  labelStyle: const TextStyle(color: Colors.redAccent),
+                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.redAccent),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.withOpacity(0.1),
+                ),
               ),
+              const SizedBox(height: 16),
+
+              // Skills Field
               TextFormField(
                 controller: skillsCtrl,
-                decoration: const InputDecoration(labelText: "Skills (comma separated)"),
+                style: const TextStyle(fontSize: 16),
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: "Skills (comma separated)",
+                  labelStyle: const TextStyle(color: Colors.redAccent),
+                  prefixIcon: const Icon(Icons.code, color: Colors.redAccent),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.withOpacity(0.1),
+                ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
 
+              // Save Button
               ElevatedButton(
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
@@ -81,7 +193,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     showDialog(
                       context: context,
                       builder: (_) => AlertDialog(
-                        title: const Text("Saved"),
+                        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        title: Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green, size: 28),
+                            const SizedBox(width: 12),
+                            const Text("Saved"),
+                          ],
+                        ),
                         content: const Text("Profile updated successfully."),
                         actions: [
                           TextButton(
@@ -89,6 +211,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               Navigator.pop(context);
                               Navigator.pop(context);
                             },
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.redAccent,
+                            ),
                             child: const Text("OK"),
                           )
                         ],
@@ -96,7 +221,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     );
                   }
                 },
-                child: const Text("Save"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+                child: const Text(
+                  "Save",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               )
             ],
           ),

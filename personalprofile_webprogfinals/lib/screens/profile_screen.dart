@@ -42,7 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             pinned: true,
             floating: false,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(name),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -78,6 +77,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 65), // spacing below avatar
+                  Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
                   Text(bio, style: const TextStyle(fontSize: 16)),
                   const SizedBox(height: 4),
                   Text(email, style: const TextStyle(color: Colors.redAccent)),
