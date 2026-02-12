@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/friend.dart';
+import '../database/database_helper.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -11,13 +12,26 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  final List<Friend> friends = [];
+  List<Friend> friends = [];
 
   final picker = ImagePicker();
   XFile? image;
 
   final nameCtrl = TextEditingController();
   final noteCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFriends();
+  }
+
+  Future<void> _loadFriends() async {
+    final loadedFriends = await DatabaseHelper.instance.getAllFriends();
+    setState(() {
+      friends = loadedFriends;
+    });
+  }
 
   Future pickImage() async {
     image = await picker.pickImage(source: ImageSource.camera);
@@ -28,13 +42,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     if (image == null) return;
 
-    setState(() {
-      friends.add(
-        Friend(nameCtrl.text, noteCtrl.text, image!.path),
-      );
-    });
+    final friend = Friend(nameCtrl.text, noteCtrl.text, image!.path);
+    await DatabaseHelper.instance.insertFriend(friend);
 
+    // Clear the text fields
+    nameCtrl.clear();
+    noteCtrl.clear();
+
+    await _loadFriends();
     Navigator.pop(context);
+  }
+
+  Future<void> deleteFriend(int index) async {
+    await DatabaseHelper.instance.deleteFriend(friends[index].name);
+    await _loadFriends();
   }
 
   @override
@@ -211,11 +232,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                    onPressed: () {
-                      setState(() {
-                        friends.removeAt(i);
-                      });
-                    },
+                    onPressed: () => deleteFriend(i),
                   ),
                 ),
               ),

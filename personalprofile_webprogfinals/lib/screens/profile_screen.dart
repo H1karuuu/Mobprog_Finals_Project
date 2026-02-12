@@ -4,6 +4,7 @@ import '../widgets/skill_chip.dart';
 import '../models/friend.dart';
 import 'friends_screen.dart';
 import 'edit_profile_screen.dart';
+import '../database/database_helper.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
@@ -18,11 +19,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String name = "John Christian Z. Lopez";
   String bio = "Flutter Student Developer";
   String email = "jzlopez@student.apc.edu.ph";
-
   List<String> skills = ["Flutter", "Dart", "UI Design", "Web Designer"];
   List<Friend> friends = [];
 
-  void updateProfile(n, b, e, s) {
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+    _loadFriends();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await DatabaseHelper.instance.getProfile();
+    if (profile.isNotEmpty) {
+      setState(() {
+        name = profile['name'] ?? 'John Christian Z. Lopez';
+        bio = profile['bio'] ?? 'Flutter Student Developer';
+        email = profile['email'] ?? 'jzlopez@student.apc.edu.ph';
+        skills = (profile['skills'] as String?)?.split(',') ?? ["Flutter", "Dart", "UI Design", "Web Designer"];
+      });
+    }
+  }
+
+  Future<void> _loadFriends() async {
+    final loadedFriends = await DatabaseHelper.instance.getAllFriends();
+    setState(() {
+      friends = loadedFriends;
+    });
+  }
+
+  void updateProfile(n, b, e, s) async {
+    await DatabaseHelper.instance.updateProfile(n, b, e, s);
     setState(() {
       name = n;
       bio = b;
@@ -100,8 +127,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _featureButton(
                         icon: Icons.edit,
                         label: "Edit Profile",
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () async {
+                          await Navigator.push(
                               context,
                               MaterialPageRoute(
                                   builder: (_) => EditProfileScreen(
@@ -116,9 +143,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _featureButton(
                         icon: Icons.people,
                         label: "Friends",
-                        onTap: () {
-                          Navigator.push(context,
+                        onTap: () async {
+                          await Navigator.push(
+                              context,
                               MaterialPageRoute(builder: (_) => const FriendsScreen()));
+                          // Reload friends when coming back from Friends screen
+                          _loadFriends();
                         },
                       ),
                     ],
