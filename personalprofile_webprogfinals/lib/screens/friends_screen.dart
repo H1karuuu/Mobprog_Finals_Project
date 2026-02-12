@@ -18,7 +18,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   XFile? image;
 
   final nameCtrl = TextEditingController();
-  final noteCtrl = TextEditingController();
+  final usernameCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -33,21 +33,83 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
-  Future pickImage() async {
+  Future<void> pickImageFromCamera() async {
     image = await picker.pickImage(source: ImageSource.camera);
   }
 
-  void addFriend() async {
-    await pickImage();
+  Future<void> pickImageFromGallery() async {
+    image = await picker.pickImage(source: ImageSource.gallery);
+  }
 
-    if (image == null) return;
+  void showImageSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Choose Photo Source"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.redAccent),
+                title: const Text("Take Photo"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await pickImageFromCamera();
+                  if (image != null) {
+                    await saveFriend();
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.redAccent),
+                title: const Text("Choose from Gallery"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await pickImageFromGallery();
+                  if (image != null) {
+                    await saveFriend();
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_outline, color: Colors.redAccent),
+                title: const Text("Continue without photo"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  image = null;
+                  await saveFriend();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-    final friend = Friend(nameCtrl.text, noteCtrl.text, image!.path);
+  Future<void> saveFriend() async {
+    if (nameCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a name")),
+      );
+      return;
+    }
+
+    // Use a default placeholder image if no photo selected
+    String imagePath = image?.path ?? 'assets/No Photo.jpg';
+
+    final friend = Friend(nameCtrl.text, usernameCtrl.text, imagePath);
     await DatabaseHelper.instance.insertFriend(friend);
 
-    // Clear the text fields
+    // Clear the text fields and image
     nameCtrl.clear();
-    noteCtrl.clear();
+    usernameCtrl.clear();
+    image = null;
 
     await _loadFriends();
     Navigator.pop(context);
@@ -75,7 +137,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         onPressed: () {
           // Clear controllers
           nameCtrl.clear();
-          noteCtrl.clear();
+          usernameCtrl.clear();
           
           showDialog(
             context: context,
@@ -105,7 +167,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     controller: nameCtrl,
                     style: const TextStyle(fontSize: 16),
                     decoration: InputDecoration(
-                      labelText: "Name",
+                      labelText: "Name *",
                       labelStyle: const TextStyle(color: Colors.redAccent),
                       prefixIcon: const Icon(Icons.person_outline, color: Colors.redAccent),
                       enabledBorder: OutlineInputBorder(
@@ -122,12 +184,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: noteCtrl,
+                    controller: usernameCtrl,
                     style: const TextStyle(fontSize: 16),
                     decoration: InputDecoration(
-                      labelText: "Note",
+                      labelText: "Username / Contact",
+                      hintText: "@username or phone number",
                       labelStyle: const TextStyle(color: Colors.redAccent),
-                      prefixIcon: const Icon(Icons.note_outlined, color: Colors.redAccent),
+                      prefixIcon: const Icon(Icons.alternate_email, color: Colors.redAccent),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
@@ -151,7 +214,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   child: const Text("Cancel"),
                 ),
                 ElevatedButton.icon(
-                  onPressed: addFriend,
+                  onPressed: showImageSourceDialog,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
@@ -159,8 +222,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  icon: const Icon(Icons.camera_alt, size: 20),
-                  label: const Text("Camera"),
+                  icon: const Icon(Icons.add_a_photo, size: 20),
+                  label: const Text("Next"),
                 ),
               ],
             ),
@@ -212,7 +275,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   leading: CircleAvatar(
                     radius: 28,
                     backgroundColor: Colors.redAccent,
-                    backgroundImage: FileImage(File(friends[i].imagePath)),
+                    backgroundImage: friends[i].imagePath.startsWith('assets/')
+                        ? AssetImage(friends[i].imagePath) as ImageProvider
+                        : FileImage(File(friends[i].imagePath)),
                   ),
                   title: Text(
                     friends[i].name,
@@ -221,15 +286,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       fontSize: 16,
                     ),
                   ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      friends[i].note,
-                      style: TextStyle(
-                        color: Colors.grey.withOpacity(0.8),
-                      ),
-                    ),
-                  ),
+                  subtitle: friends[i].note.isNotEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            friends[i].note,
+                            style: TextStyle(
+                              color: Colors.grey.withOpacity(0.8),
+                            ),
+                          ),
+                        )
+                      : null,
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                     onPressed: () => deleteFriend(i),

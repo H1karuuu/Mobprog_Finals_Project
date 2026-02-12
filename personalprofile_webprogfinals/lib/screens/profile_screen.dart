@@ -161,9 +161,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   ...friends.map(
                     (f) => ListTile(
-                      leading: CircleAvatar(backgroundImage: FileImage(File(f.imagePath))),
+                      leading: CircleAvatar(
+                        backgroundImage: f.imagePath.startsWith('assets/')
+                            ? AssetImage(f.imagePath) as ImageProvider
+                            : FileImage(File(f.imagePath)),
+                      ),
                       title: Text(f.name),
-                      subtitle: Text(f.note),
+                      subtitle: f.note.isNotEmpty ? Text(f.note) : null,
                     ),
                   ),
                 ],
