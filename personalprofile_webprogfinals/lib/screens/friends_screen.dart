@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/friend.dart';
-import '../database/database_helper.dart';
+import '../services/supabase_service.dart';
+import '../widgets/friend_card.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -12,13 +14,8 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  List<Friend> friends = [];
-
-  final picker = ImagePicker();
-  XFile? image;
-
-  final nameCtrl = TextEditingController();
-  final usernameCtrl = TextEditingController();
+  List<Friend> _friends = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -27,283 +24,269 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Future<void> _loadFriends() async {
-    final loadedFriends = await DatabaseHelper.instance.getAllFriends();
-    setState(() {
-      friends = loadedFriends;
-    });
-  }
-
-  Future<void> pickImageFromCamera() async {
-    image = await picker.pickImage(source: ImageSource.camera);
-  }
-
-  Future<void> pickImageFromGallery() async {
-    image = await picker.pickImage(source: ImageSource.gallery);
-  }
-
-  void showImageSourceDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text("Choose Photo Source"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.redAccent),
-                title: const Text("Take Photo"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await pickImageFromCamera();
-                  if (image != null) {
-                    await saveFriend();
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.redAccent),
-                title: const Text("Choose from Gallery"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await pickImageFromGallery();
-                  if (image != null) {
-                    await saveFriend();
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.person_outline, color: Colors.redAccent),
-                title: const Text("Continue without photo"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  image = null;
-                  await saveFriend();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> saveFriend() async {
-    if (nameCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a name")),
-      );
+    setState(() => _isLoading = true);
+    final userId = SupabaseService.instance.currentUserId;
+    if (userId == null) {
+      setState(() => _isLoading = false);
       return;
     }
 
-    // Use a default placeholder image if no photo selected
-    String imagePath = image?.path ?? 'assets/No Photo.jpg';
-
-    final friend = Friend(nameCtrl.text, usernameCtrl.text, imagePath);
-    await DatabaseHelper.instance.insertFriend(friend);
-
-    // Clear the text fields and image
-    nameCtrl.clear();
-    usernameCtrl.clear();
-    image = null;
-
-    await _loadFriends();
-    Navigator.pop(context);
+    final friends = await SupabaseService.instance.getFriends(userId);
+    if (!mounted) return;
+    setState(() {
+      _friends = friends;
+      _isLoading = false;
+    });
   }
 
-  Future<void> deleteFriend(int index) async {
-    await DatabaseHelper.instance.deleteFriend(friends[index].name);
-    await _loadFriends();
+  void _showFriendDialog({Friend? friend}) {
+    final isEditing = friend != null;
+    final nameController = TextEditingController(text: friend?.name ?? '');
+    final contactController = TextEditingController(text: friend?.contactInfo ?? '');
+    File? selectedImage;
+    bool removePhoto = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final ImageProvider previewImage;
+          if (selectedImage != null) {
+            previewImage = FileImage(selectedImage!);
+          } else if (!removePhoto && friend?.imageUrl != null) {
+            previewImage = CachedNetworkImageProvider(friend!.imageUrl!)
+                as ImageProvider<Object>;
+          } else {
+            previewImage = const AssetImage('assets/No Photo.jpg');
+          }
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isEditing ? 'Edit Friend' : 'Add Friend',
+                      style: Theme.of(dialogContext).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Name *',
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: contactController,
+                      decoration: const InputDecoration(
+                        labelText: 'Contact (username/phone)',
+                        prefixIcon: Icon(Icons.alternate_email),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image(
+                        image: previewImage,
+                        height: 150,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picker = ImagePicker();
+                        final source = await showDialog<String>(
+                          context: dialogContext,
+                          builder: (pickerContext) => AlertDialog(
+                            title: const Text('Choose source'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.camera_alt),
+                                  title: const Text('Camera'),
+                                  onTap: () => Navigator.pop(pickerContext, 'camera'),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.photo_library),
+                                  title: const Text('Gallery'),
+                                  onTap: () => Navigator.pop(pickerContext, 'gallery'),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.image_not_supported),
+                                  title: const Text('Continue without photo'),
+                                  onTap: () => Navigator.pop(pickerContext, 'none'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+
+                        if (source == null) return;
+                        if (source == 'none') {
+                          setDialogState(() {
+                            selectedImage = null;
+                            removePhoto = true;
+                          });
+                          return;
+                        }
+
+                        final picked = await picker.pickImage(
+                          source: source == 'camera'
+                              ? ImageSource.camera
+                              : ImageSource.gallery,
+                        );
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedImage = File(picked.path);
+                            removePhoto = false;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.add_a_photo),
+                      label: Text(selectedImage == null ? 'Add Photo' : 'Change Photo'),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final name = nameController.text.trim();
+                              final contact = contactController.text.trim();
+                              if (name.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Name is required')),
+                                );
+                                return;
+                              }
+                              if (contact.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Contact is required (username or phone).',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              final isPhone = RegExp(r'^\d+$').hasMatch(contact);
+                              if (isPhone && contact.length < 11) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Phone number must be at least 11 digits.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              final userId = SupabaseService.instance.currentUserId;
+                              if (userId == null) return;
+
+                              if (isEditing) {
+                                await SupabaseService.instance.updateFriend(
+                                  friend: friend,
+                                  name: name,
+                                  contactInfo: contact,
+                                  image: selectedImage,
+                                  removePhoto: removePhoto,
+                                );
+                              } else {
+                                await SupabaseService.instance.addFriend(
+                                  userId: userId,
+                                  name: name,
+                                  contactInfo: contact,
+                                  image: selectedImage,
+                                );
+                              }
+
+                              if (!dialogContext.mounted) return;
+                              Navigator.pop(dialogContext);
+                              _loadFriends();
+                            },
+                            child: Text(isEditing ? 'Save' : 'Add'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("Friends"),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: const Text('FRIENDS'),
       ),
-
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-        onPressed: () {
-          // Clear controllers
-          nameCtrl.clear();
-          usernameCtrl.clear();
-          
-          showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.person_add, color: Colors.redAccent),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text("Add Friend"),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    style: const TextStyle(fontSize: 16),
-                    decoration: InputDecoration(
-                      labelText: "Name *",
-                      labelStyle: const TextStyle(color: Colors.redAccent),
-                      prefixIcon: const Icon(Icons.person_outline, color: Colors.redAccent),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.redAccent, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.1),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: usernameCtrl,
-                    style: const TextStyle(fontSize: 16),
-                    decoration: InputDecoration(
-                      labelText: "Username / Contact",
-                      hintText: "@username or phone number",
-                      labelStyle: const TextStyle(color: Colors.redAccent),
-                      prefixIcon: const Icon(Icons.alternate_email, color: Colors.redAccent),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.redAccent, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.1),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey,
-                  ),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton.icon(
-                  onPressed: showImageSourceDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add_a_photo, size: 20),
-                  label: const Text("Next"),
-                ),
-              ],
-            ),
-          );
-        },
+        onPressed: () => _showFriendDialog(),
+        child: const Icon(Icons.person_add),
       ),
-
-      body: friends.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.people_outline,
-                    size: 80,
-                    color: Colors.grey.withOpacity(0.5),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _friends.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.people_outline,
+                        size: 80,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No friends yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('Tap + to add your first friend'),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No friends yet",
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey.withOpacity(0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Tap the + button to add a friend",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.withOpacity(0.5),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: friends.length,
-              itemBuilder: (_, i) => Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                color: Colors.grey.withOpacity(0.1),
-                elevation: 0,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    radius: 28,
-                    backgroundColor: Colors.redAccent,
-                    backgroundImage: friends[i].imagePath.startsWith('assets/')
-                        ? AssetImage(friends[i].imagePath) as ImageProvider
-                        : FileImage(File(friends[i].imagePath)),
-                  ),
-                  title: Text(
-                    friends[i].name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  subtitle: friends[i].note.isNotEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            friends[i].note,
-                            style: TextStyle(
-                              color: Colors.grey.withOpacity(0.8),
-                            ),
-                          ),
-                        )
-                      : null,
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                    onPressed: () => deleteFriend(i),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadFriends,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _friends.length,
+                    itemBuilder: (context, index) {
+                      return FriendCard(
+                        friend: _friends[index],
+                        onEdit: () => _showFriendDialog(friend: _friends[index]),
+                        onDelete: _loadFriends,
+                      );
+                    },
                   ),
                 ),
-              ),
-            ),
     );
   }
 }

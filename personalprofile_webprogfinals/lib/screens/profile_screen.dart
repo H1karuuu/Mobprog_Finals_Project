@@ -1,204 +1,233 @@
-import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../widgets/skill_chip.dart';
-import '../models/friend.dart';
-import 'friends_screen.dart';
+import '../models/post.dart';
+import '../models/user_profile.dart';
+import '../services/supabase_service.dart';
+import '../widgets/post_card.dart';
 import 'edit_profile_screen.dart';
-import '../database/database_helper.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final VoidCallback onToggleTheme;
-
-  const ProfileScreen({super.key, required this.onToggleTheme});
+  final VoidCallback onThemeToggle;
+  const ProfileScreen({super.key, required this.onThemeToggle});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String name = "John Christian Z. Lopez";
-  String bio = "Flutter Student Developer";
-  String email = "jzlopez@student.apc.edu.ph";
-  List<String> skills = ["Flutter", "Dart", "UI Design", "Web Designer"];
-  List<Friend> friends = [];
+  UserProfile? _profile;
+  List<Post> _posts = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
-    _loadFriends();
   }
 
-  Future<void> _loadProfile() async {
-    final profile = await DatabaseHelper.instance.getProfile();
-    if (profile.isNotEmpty) {
-      setState(() {
-        name = profile['name'] ?? 'John Christian Z. Lopez';
-        bio = profile['bio'] ?? 'Flutter Student Developer';
-        email = profile['email'] ?? 'jzlopez@student.apc.edu.ph';
-        skills = (profile['skills'] as String?)?.split(',') ?? ["Flutter", "Dart", "UI Design", "Web Designer"];
-      });
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
+    final userId = SupabaseService.instance.currentUserId;
+    if (userId == null) {
+      setState(() => _isLoading = false);
+      return;
     }
-  }
 
-  Future<void> _loadFriends() async {
-    final loadedFriends = await DatabaseHelper.instance.getAllFriends();
+    setState(() => _isLoading = true);
+    final profileFuture = SupabaseService.instance.getProfile(
+      userId,
+      forceRefresh: forceRefresh,
+    );
+    final postsFuture = SupabaseService.instance.getUserPosts(userId);
+    final profile = await profileFuture;
+    final posts = await postsFuture;
+    if (!mounted) return;
+
     setState(() {
-      friends = loadedFriends;
+      _profile = profile;
+      _posts = posts;
+      _isLoading = false;
     });
   }
 
-  void updateProfile(n, b, e, s) async {
-    await DatabaseHelper.instance.updateProfile(n, b, e, s);
-    setState(() {
-      name = n;
-      bio = b;
-      email = e;
-      skills = s;
-    });
+  Future<void> _openEditProfile() async {
+    if (_profile == null) return;
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(profile: _profile!),
+      ),
+    );
+    if (saved == true) {
+      _loadProfile(forceRefresh: true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_profile == null) {
+      return Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('PROFILE'),
+        ),
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () => _loadProfile(forceRefresh: true),
+            child: const Text('Retry'),
+          ),
+        ),
+      );
+    }
+
+    final coverProvider = _profile!.coverUrl != null
+        ? CachedNetworkImageProvider(_profile!.coverUrl!)
+        : const AssetImage('assets/header.gif') as ImageProvider;
+    final avatarProvider = _profile!.avatarUrl != null
+        ? CachedNetworkImageProvider(_profile!.avatarUrl!)
+            as ImageProvider<Object>
+        : const AssetImage('assets/profile.png');
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // HEADER WITH BACKGROUND IMAGE
           SliverAppBar(
-            expandedHeight: 200,
+            automaticallyImplyLeading: false,
+            expandedHeight: 240,
             pinned: true,
-            floating: false,
+            title: const Text('PROFILE'),
+            actions: [
+              IconButton(
+                onPressed: widget.onThemeToggle,
+                icon: const Icon(Icons.brightness_6),
+              ),
+              IconButton(
+                onPressed: _openEditProfile,
+                icon: const Icon(Icons.edit),
+                tooltip: 'Edit Profile',
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.asset(
-                    "assets/header.gif", // <-- add a header image in assets
-                    fit: BoxFit.cover,
-                  ),
+                  Image(image: coverProvider, fit: BoxFit.cover),
                   Container(
-                    color: Colors.black.withOpacity(0.4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.75),
+                        ],
+                      ),
+                    ),
                   ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CircleAvatar(
-                      radius: 55,
-                      backgroundImage: const AssetImage("assets/profile.png"),
+                  Positioned(
+                    left: 16,
+                    bottom: 18,
+                    child: Row(
+                      children: [
+                        CircleAvatar(radius: 48, backgroundImage: avatarProvider),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _profile!.fullName,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            Text(
+                              '@${_profile!.username}',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.brightness_6),
-                onPressed: widget.onToggleTheme,
-              )
-            ],
           ),
-
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 65), // spacing below avatar
-                  Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text(
+                    'About Me',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 8),
-                  Text(bio, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text(email, style: const TextStyle(color: Colors.redAccent)),
-
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    alignment: WrapAlignment.center,
-                    children: skills.map((e) => SkillChip(label: e)).toList(),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Theme.of(context).cardColor,
+                    ),
+                    child: Text(
+                      (_profile!.bio != null && _profile!.bio!.trim().isNotEmpty)
+                          ? _profile!.bio!
+                          : 'No bio yet. Tap edit to add your about me.',
+                    ),
                   ),
-
-                  const SizedBox(height: 20),
-
-                  // FEATURE MENU
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _featureButton(
-                        icon: Icons.edit,
-                        label: "Edit Profile",
-                        onTap: () async {
-                          await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => EditProfileScreen(
-                                        name: name,
-                                        bio: bio,
-                                        email: email,
-                                        skills: skills,
-                                        onSave: updateProfile,
-                                      )));
-                        },
-                      ),
-                      _featureButton(
-                        icon: Icons.people,
-                        label: "Friends",
-                        onTap: () async {
-                          await Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const FriendsScreen()));
-                          // Reload friends when coming back from Friends screen
-                          _loadFriends();
-                        },
-                      ),
-                    ],
-                  ),
-
+                  if (_profile!.skillsList.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _profile!.skillsList.map((skill) {
+                        return Chip(
+                          label: Text(skill),
+                          backgroundColor:
+                              Theme.of(context).primaryColor.withValues(alpha: 0.2),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const Divider(),
-
-                  const Text("Friends Preview", style: TextStyle(fontWeight: FontWeight.bold)),
-
-                  ...friends.map(
-                    (f) => ListTile(
-                      leading: CircleAvatar(
-                        backgroundImage: f.imagePath.startsWith('assets/')
-                            ? AssetImage(f.imagePath) as ImageProvider
-                            : FileImage(File(f.imagePath)),
-                      ),
-                      title: Text(f.name),
-                      subtitle: f.note.isNotEmpty ? Text(f.note) : null,
-                    ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'My Posts',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
               ),
             ),
           ),
+          _posts.isEmpty
+              ? const SliverToBoxAdapter(
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 36),
+                      child: Text('No posts yet'),
+                    ),
+                  ),
+                )
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => PostCard(
+                      post: _posts[index],
+                      onDelete: () => _loadProfile(forceRefresh: true),
+                    ),
+                    childCount: _posts.length,
+                  ),
+                ),
         ],
-      ),
-    );
-  }
-
-  Widget _featureButton(
-      {required IconData icon, required String label, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 130,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.redAccent, size: 30),
-            const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: Colors.redAccent)),
-          ],
-        ),
       ),
     );
   }
