@@ -90,7 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _selectedImage = null);
       Navigator.pop(context);
       _loadHomeData();
+      return;
     }
+
+    final message = SupabaseService.instance.lastErrorMessage ??
+        'Could not create post with image.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _showCreatePostDialog() {

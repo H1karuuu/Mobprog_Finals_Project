@@ -96,14 +96,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (shouldUpload == true) {
       final userId = SupabaseService.instance.currentUserId;
       if (userId != null) {
-        await SupabaseService.instance.addToGallery(
+        final item = await SupabaseService.instance.addToGallery(
           userId: userId,
           image: File(image.path),
           caption: captionController.text.trim().isEmpty
               ? null
               : captionController.text.trim(),
         );
-        _loadGallery();
+
+        if (!mounted) return;
+        if (item != null) {
+          _loadGallery();
+        } else {
+          final message = SupabaseService.instance.lastErrorMessage ??
+              'Could not upload photo to gallery.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
       }
     }
   }

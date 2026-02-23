@@ -14,6 +14,94 @@ class SupabaseService {
   UserProfile? _cachedProfile;
   String? _cachedProfileUserId;
   DateTime? _cachedProfileAt;
+  String? _lastErrorMessage;
+
+  String? get lastErrorMessage => _lastErrorMessage;
+
+  void _clearError() {
+    _lastErrorMessage = null;
+  }
+
+  String _extFromPath(String path) {
+    final trimmed = path.trim();
+    if (!trimmed.contains('.')) return 'jpg';
+    final ext = trimmed.split('.').last.toLowerCase();
+    if (ext.isEmpty) return 'jpg';
+    return ext;
+  }
+
+  String _contentTypeForExt(String ext) {
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  String _friendlyErrorMessage(Object error, String action) {
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+
+    if (lower.contains('failed host lookup') ||
+        lower.contains('socketexception')) {
+      return '$action failed: no internet/DNS on device.';
+    }
+    if (lower.contains('bucket not found')) {
+      return '$action failed: missing Supabase storage bucket.';
+    }
+    if (lower.contains('row-level security') ||
+        lower.contains('new row violates row-level security policy') ||
+        lower.contains('permission denied')) {
+      return '$action failed: Supabase RLS policy denied this action.';
+    }
+    if (lower.contains('jwt') || lower.contains('not authenticated')) {
+      return '$action failed: session expired. Please log in again.';
+    }
+
+    return '$action failed: $raw';
+  }
+
+  void _setError(Object error, String action) {
+    _lastErrorMessage = _friendlyErrorMessage(error, action);
+    debugPrint(_lastErrorMessage);
+    debugPrint('Raw error: $error');
+  }
+
+  Future<String> _uploadImageToBucket({
+    required String bucket,
+    required String userId,
+    required File image,
+  }) async {
+    final fileExt = _extFromPath(image.path);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final safeUserPrefix = userId.length >= 8 ? userId.substring(0, 8) : userId;
+    final fileName = '${now}_$safeUserPrefix.$fileExt';
+    final filePath = '$userId/$fileName';
+
+    final bytes = await image.readAsBytes();
+
+    await supabase.storage.from(bucket).uploadBinary(
+      filePath,
+      bytes,
+      fileOptions: FileOptions(
+        upsert: true,
+        contentType: _contentTypeForExt(fileExt),
+      ),
+    );
+
+    return supabase.storage.from(bucket).getPublicUrl(filePath);
+  }
 
   // ==================== AUTH ====================
 
@@ -136,19 +224,14 @@ class SupabaseService {
   }
 
   Future<String?> uploadAvatar(String userId, File file) async {
+    _clearError();
     try {
-      final fileExt = file.path.split('.').last;
-      final fileName = '$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = '$userId/$fileName';
-
-      await supabase.storage.from('avatars').upload(
-        filePath,
-        file,
-        fileOptions: const FileOptions(upsert: true),
+      final url = await _uploadImageToBucket(
+        bucket: 'avatars',
+        userId: userId,
+        image: file,
       );
 
-      final url = supabase.storage.from('avatars').getPublicUrl(filePath);
-      
       await supabase.from('profiles').update({
         'avatar_url': url,
       }).eq('id', userId);
@@ -156,25 +239,20 @@ class SupabaseService {
 
       return url;
     } catch (e) {
-      debugPrint('Error uploading avatar: $e');
+      _setError(e, 'Avatar upload');
       return null;
     }
   }
 
   Future<String?> uploadCover(String userId, File file) async {
+    _clearError();
     try {
-      final fileExt = file.path.split('.').last;
-      final fileName = '$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = '$userId/$fileName';
-
-      await supabase.storage.from('covers').upload(
-        filePath,
-        file,
-        fileOptions: const FileOptions(upsert: true),
+      final url = await _uploadImageToBucket(
+        bucket: 'covers',
+        userId: userId,
+        image: file,
       );
 
-      final url = supabase.storage.from('covers').getPublicUrl(filePath);
-      
       await supabase.from('profiles').update({
         'cover_url': url,
       }).eq('id', userId);
@@ -182,7 +260,7 @@ class SupabaseService {
 
       return url;
     } catch (e) {
-      debugPrint('Error uploading cover: $e');
+      _setError(e, 'Cover upload');
       return null;
     }
   }
@@ -221,16 +299,16 @@ class SupabaseService {
     required String content,
     File? image,
   }) async {
+    _clearError();
     try {
       String? imageUrl;
 
       if (image != null) {
-        final fileExt = image.path.split('.').last;
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final filePath = '$userId/$fileName';
-
-        await supabase.storage.from('posts').upload(filePath, image);
-        imageUrl = supabase.storage.from('posts').getPublicUrl(filePath);
+        imageUrl = await _uploadImageToBucket(
+          bucket: 'posts',
+          userId: userId,
+          image: image,
+        );
       }
 
       final response = await supabase
@@ -245,7 +323,7 @@ class SupabaseService {
 
       return Post.fromJson(response);
     } catch (e) {
-      debugPrint('Error creating post: $e');
+      _setError(e, 'Create post');
       return null;
     }
   }
@@ -277,16 +355,16 @@ class SupabaseService {
     String? contactInfo,
     File? image,
   }) async {
+    _clearError();
     try {
       String? imageUrl;
 
       if (image != null) {
-        final fileExt = image.path.split('.').last;
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final filePath = '$userId/$fileName';
-
-        await supabase.storage.from('friends').upload(filePath, image);
-        imageUrl = supabase.storage.from('friends').getPublicUrl(filePath);
+        imageUrl = await _uploadImageToBucket(
+          bucket: 'friends',
+          userId: userId,
+          image: image,
+        );
       }
 
       final response = await supabase
@@ -302,7 +380,7 @@ class SupabaseService {
 
       return Friend.fromJson(response);
     } catch (e) {
-      debugPrint('Error adding friend: $e');
+      _setError(e, 'Add friend');
       return null;
     }
   }
@@ -314,16 +392,16 @@ class SupabaseService {
     File? image,
     bool removePhoto = false,
   }) async {
+    _clearError();
     try {
       String? imageUrl = removePhoto ? null : friend.imageUrl;
 
       if (image != null) {
-        final fileExt = image.path.split('.').last;
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final filePath = '${friend.userId}/$fileName';
-
-        await supabase.storage.from('friends').upload(filePath, image);
-        imageUrl = supabase.storage.from('friends').getPublicUrl(filePath);
+        imageUrl = await _uploadImageToBucket(
+          bucket: 'friends',
+          userId: friend.userId,
+          image: image,
+        );
       }
 
       final response = await supabase
@@ -344,12 +422,11 @@ class SupabaseService {
         String? imageUrl = removePhoto ? null : friend.imageUrl;
 
         if (image != null) {
-          final fileExt = image.path.split('.').last;
-          final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-          final filePath = '${friend.userId}/$fileName';
-
-          await supabase.storage.from('friends').upload(filePath, image);
-          imageUrl = supabase.storage.from('friends').getPublicUrl(filePath);
+          imageUrl = await _uploadImageToBucket(
+            bucket: 'friends',
+            userId: friend.userId,
+            image: image,
+          );
         }
 
         final inserted = await supabase
@@ -366,7 +443,7 @@ class SupabaseService {
         await supabase.from('friends').delete().eq('id', friend.id);
         return Friend.fromJson(inserted);
       } catch (fallbackError) {
-        debugPrint('Error updating friend fallback: $fallbackError');
+        _setError(fallbackError, 'Update friend');
         return null;
       }
     }
@@ -398,13 +475,13 @@ class SupabaseService {
     required File image,
     String? caption,
   }) async {
+    _clearError();
     try {
-      final fileExt = image.path.split('.').last;
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = '$userId/$fileName';
-
-      await supabase.storage.from('gallery').upload(filePath, image);
-      final imageUrl = supabase.storage.from('gallery').getPublicUrl(filePath);
+      final imageUrl = await _uploadImageToBucket(
+        bucket: 'gallery',
+        userId: userId,
+        image: image,
+      );
 
       final response = await supabase
           .from('gallery')
@@ -418,7 +495,7 @@ class SupabaseService {
 
       return GalleryItem.fromJson(response);
     } catch (e) {
-      debugPrint('Error adding to gallery: $e');
+      _setError(e, 'Gallery upload');
       return null;
     }
   }

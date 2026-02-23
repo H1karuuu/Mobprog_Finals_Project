@@ -200,8 +200,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               final userId = SupabaseService.instance.currentUserId;
                               if (userId == null) return;
 
+                              Friend? result;
                               if (isEditing) {
-                                await SupabaseService.instance.updateFriend(
+                                result = await SupabaseService.instance.updateFriend(
                                   friend: friend,
                                   name: name,
                                   contactInfo: contact,
@@ -209,7 +210,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                                   removePhoto: removePhoto,
                                 );
                               } else {
-                                await SupabaseService.instance.addFriend(
+                                result = await SupabaseService.instance.addFriend(
                                   userId: userId,
                                   name: name,
                                   contactInfo: contact,
@@ -218,6 +219,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               }
 
                               if (!dialogContext.mounted) return;
+                              if (result == null) {
+                                final message = SupabaseService.instance.lastErrorMessage ??
+                                    'Could not save friend photo.';
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(message)),
+                                );
+                                return;
+                              }
                               Navigator.pop(dialogContext);
                               _loadFriends();
                             },
