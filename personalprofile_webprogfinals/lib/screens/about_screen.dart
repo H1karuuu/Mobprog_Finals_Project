@@ -146,7 +146,7 @@ class _AboutScreenState extends State<AboutScreen> {
                         child: Column(
                           children: [
                             Text(
-                              'Personal Profile App',
+                              'Profile App',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 8),

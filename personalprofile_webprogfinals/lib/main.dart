@@ -40,7 +40,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Personal Profile',
+      title: 'Profile App',
       theme: isDarkMode ? _darkTheme() : _lightTheme(),
       home: Supabase.instance.client.auth.currentUser == null
           ? LoginScreen(onThemeToggle: toggleTheme)
